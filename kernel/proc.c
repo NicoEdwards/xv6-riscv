@@ -147,6 +147,9 @@ found:
   p->context.sp = p->kstack + PGSIZE;
 
   return p;
+
+  p->priority = 0;
+  p->boost = 1;
 }
 
 // free a proc structure and the data hanging from it,
@@ -441,44 +444,53 @@ wait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
-void
-scheduler(void)
-{
-  struct proc *p;
-  struct cpu *c = mycpu();
+void scheduler(void) {
+    struct proc *p;
+    struct proc *selected_proc;
+    struct cpu *c = mycpu();
+    c->proc = 0;
 
-  c->proc = 0;
-  for(;;){
-    // The most recent process to run may have had interrupts
-    // turned off; enable them to avoid a deadlock if all
-    // processes are waiting.
-    intr_on();
+    for(;;){
+        // Desactivar interrupciones para trabajar en el scheduler
+        intr_off();
 
-    int found = 0;
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
+        // Ajustar prioridades antes de seleccionar el siguiente proceso
+        adjust_priority();
 
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
-      }
-      release(&p->lock);
+        selected_proc = 0;
+        // Buscar el proceso RUNNABLE con la prioridad más alta
+        for(p = proc; p < &proc[NPROC]; p++){
+            // Adquirir el lock antes de acceder al estado del proceso
+            acquire(&p->lock);
+            if(p->state == RUNNABLE){
+                if(selected_proc == 0 || p->priority < selected_proc->priority){
+                    if (selected_proc) {
+                        release(&selected_proc->lock); // Liberar el lock del proceso anterior
+                    }
+                    selected_proc = p;
+                    continue;  // Mantener el lock
+                }
+            }
+            release(&p->lock);  // Liberar el lock si no es seleccionado
+        }
+
+        if(selected_proc != 0){
+            p = selected_proc;
+            // Cambiar el estado a RUNNING
+            p->state = RUNNING;
+            c->proc = p;
+            swtch(&c->context, &p->context);
+            c->proc = 0;
+            
+            // Soltar el lock cuando termine de ejecutarse
+            release(&p->lock);
+        }
+
+        // Reactivar interrupciones
+        intr_on();
     }
-    if(found == 0) {
-      // nothing to run; stop running on this core until an interrupt.
-      intr_on();
-      asm volatile("wfi");
-    }
-  }
 }
+
 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
@@ -692,4 +704,26 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+void adjust_priority(void) {
+    struct proc *p;
+    for(p = proc; p < &proc[NPROC]; p++){
+        // Adquirir el lock antes de modificar el proceso
+        acquire(&p->lock);
+        if(p->state != ZOMBIE){
+            p->priority += p->boost;
+
+            // Cambiar el boost si alcanza los límites
+            if(p->priority >= 9){
+                p->priority = 9;
+                p->boost = -1;  // Cambiar el boost a negativo
+            } else if(p->priority <= 0){
+                p->priority = 0;
+                p->boost = 1;   // Cambiar el boost a positivo
+            }
+        }
+        // Liberar el lock después de modificar
+        release(&p->lock);
+    }
 }
