@@ -6,6 +6,8 @@
 #include "spinlock.h"
 #include "proc.h"
 
+void update_pte_permissions(pagetable_t pagetable, uint64 addr, int len, int readonly);
+
 uint64
 sys_exit(void)
 {
@@ -91,3 +93,41 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_mprotect(void) {
+    uint64 addr;
+    int len;
+
+    if (argaddr(0, &addr) < 0 || argint(1, &len) < 0) {
+    return -1; // Retorna un error si alguna de las funciones falla
+    }
+
+
+    // Verificar que la dirección es válida y está alineada a una página.
+    if (addr % PGSIZE != 0 || len <= 0) {
+        return -1; // Error si la dirección o longitud son inválidas.
+    }
+
+    update_pte_permissions(myproc()->pagetable, addr, len, 1); // Marcar como solo lectura
+    return 0; 
+}
+
+uint64
+sys_munprotect(void) {
+    uint64 addr;
+    int len;
+
+    if (argaddr(0, &addr) < 0 || argint(1, &len) < 0) {
+    return -1; // Retorna un error si alguna de las funciones falla
+  }
+
+
+    if (addr % PGSIZE != 0 || len <= 0) {
+        return -1; // Error si la dirección o longitud son inválidas.
+    }
+
+    update_pte_permissions(myproc()->pagetable, addr, len, 0); // Restaurar permisos de escritura
+    return 0;
+}
+

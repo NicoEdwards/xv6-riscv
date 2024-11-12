@@ -449,3 +449,21 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+// Modifica el permiso de las PTEs para marcar o desmarcar como de solo lectura.
+void update_pte_permissions(pagetable_t pagetable, uint64 va, int num_pages, int make_readonly) {
+    for (int i = 0; i < num_pages; i++, va += PGSIZE) {
+        pte_t *pte = walk(pagetable, va, 0);
+        if (pte && (*pte & PTE_V)) {
+            if (make_readonly) {
+                *pte &= ~PTE_W; // Quitar el bit de escritura para hacer la página de solo lectura
+            } else {
+                *pte |= PTE_W;  // Restaurar el bit de escritura para hacer la página de lectura/escritura
+            }
+        } else {
+            panic("update_pte_permissions: dirección no válida");
+        }
+    }
+    // Invalidar el TLB para que los cambios se reflejen de inmediato.
+    sfence_vma();
+}

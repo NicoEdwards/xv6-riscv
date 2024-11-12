@@ -50,7 +50,14 @@ usertrap(void)
   // save user program counter.
   p->trapframe->epc = r_sepc();
   
-  if(r_scause() == 8){
+  // Manejo de la excepción de protección de escritura
+  if(r_scause() == 15) { // Código de causa para fallo de página de escritura (puede ser diferente en tu configuración)
+    uint64 faulting_address = r_stval(); // Dirección que causó la excepción
+    printf("usertrap(): intento de escritura en página de solo lectura, pid=%d\n", p->pid);
+    printf("Dirección de la falla: 0x%lx\n", faulting_address);
+    p->killed = 1; // Marcar el proceso como muerto
+  }
+  else if(r_scause() == 8){
     // system call
 
     if(killed(p))
