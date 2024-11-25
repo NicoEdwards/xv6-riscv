@@ -335,6 +335,18 @@ sys_open(void)
     }
   }
 
+  // Verificación de permisos antes de abrir el archivo
+  if(omode & O_RDONLY && !(ip->permissions & 0x4)) {  // Lectura
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+  if((omode & O_WRONLY || omode & O_RDWR) && !(ip->permissions & 0x2)) {  // Escritura
+    iunlockput(ip);
+    end_op();
+    return -1;
+  }
+
   if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
     iunlockput(ip);
     end_op();

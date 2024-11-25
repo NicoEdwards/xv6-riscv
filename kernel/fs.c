@@ -199,23 +199,24 @@ struct inode*
 ialloc(uint dev, short type)
 {
   int inum;
-  struct buf *bp;
-  struct dinode *dip;
+  struct buf *bp;  // Puntero para manejar el bloque de disco
+  struct dinode *dip;  // Puntero para manejar el inode
 
   for(inum = 1; inum < sb.ninodes; inum++){
     bp = bread(dev, IBLOCK(inum, sb));
-    dip = (struct dinode*)bp->data + inum%IPB;
-    if(dip->type == 0){  // a free inode
-      memset(dip, 0, sizeof(*dip));
-      dip->type = type;
-      log_write(bp);   // mark it allocated on the disk
-      brelse(bp);
-      return iget(dev, inum);
+    dip = (struct dinode*)bp->data + inum%IPB;  // Puntero al inode dentro del bloque
+    if(dip->type == 0){  // Si el inode está libre
+      memset(dip, 0, sizeof(*dip));  // Inicializa el inode a cero
+      dip->type = type;  // Asigna el tipo de archivo
+      dip->permissions = 3;  // Asigna permisos de lectura/escritura (valor 3)
+      log_write(bp);  // Marca el inode como asignado en el disco
+      brelse(bp);  // Libera el buffer
+      return iget(dev, inum);  // Devuelve el inode recién asignado
     }
-    brelse(bp);
+    brelse(bp);  // Libera el buffer si el inode no está libre
   }
   printf("ialloc: no inodes\n");
-  return 0;
+  return 0;  // Si no hay inodes libres, retorna null
 }
 
 // Copy a modified in-memory inode to disk.
@@ -479,12 +480,17 @@ readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
   if(off + n > ip->size)
     n = ip->size - off;
 
-  for(tot=0; tot<n; tot+=m, off+=m, dst+=m){
-    uint addr = bmap(ip, off/BSIZE);
+  // Verificar si el archivo tiene permisos de lectura
+  if(ip->permissions == 1) {  // Solo lectura, no se puede leer
+    return -1;
+  }
+
+  for(tot = 0; tot < n; tot += m, off += m, dst += m) {
+    uint addr = bmap(ip, off / BSIZE);
     if(addr == 0)
       break;
     bp = bread(ip->dev, addr);
-    m = min(n - tot, BSIZE - off%BSIZE);
+    m = min(n - tot, BSIZE - off % BSIZE);
     if(either_copyout(user_dst, dst, bp->data + (off % BSIZE), m) == -1) {
       brelse(bp);
       tot = -1;
@@ -508,6 +514,11 @@ writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
   uint tot, m;
   struct buf *bp;
 
+  // Verificar permisos de escritura (si es solo lectura, no permitir escritura)
+  if (ip->permissions == 1) {  // Solo lectura
+    return -1;  // Error: no se puede escribir en un archivo de solo lectura
+  }
+
   if(off > ip->size || off + n < off)
     return -1;
   if(off + n > MAXFILE*BSIZE)
@@ -530,13 +541,12 @@ writei(struct inode *ip, int user_src, uint64 src, uint off, uint n)
   if(off > ip->size)
     ip->size = off;
 
-  // write the i-node back to disk even if the size didn't change
-  // because the loop above might have called bmap() and added a new
-  // block to ip->addrs[].
+  // Escribir el i-node de vuelta al disco aunque el tamaño no cambie
   iupdate(ip);
 
   return tot;
 }
+
 
 // Directories
 

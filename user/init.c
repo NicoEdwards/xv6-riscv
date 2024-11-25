@@ -11,14 +11,17 @@
 
 char *argv[] = { "sh", 0 };
 
-int
-main(void)
-{
+int main(void) {
   int pid, wpid;
 
+  printf("init: starting\n");
+
   if(open("console", O_RDWR) < 0){
+    printf("init: open console failed, creating console\n");
     mknod("console", CONSOLE, 0);
     open("console", O_RDWR);
+  } else {
+    printf("init: console opened successfully\n");
   }
   dup(0);  // stdout
   dup(0);  // stderr
@@ -31,23 +34,22 @@ main(void)
       exit(1);
     }
     if(pid == 0){
+      printf("init: exec sh\n");
       exec("sh", argv);
       printf("init: exec sh failed\n");
       exit(1);
     }
-
     for(;;){
-      // this call to wait() returns if the shell exits,
-      // or if a parentless process exits.
+      printf("init: waiting for sh to exit\n");
       wpid = wait((int *) 0);
       if(wpid == pid){
-        // the shell exited; restart it.
+        printf("init: sh exited, restarting\n");
         break;
       } else if(wpid < 0){
         printf("init: wait returned an error\n");
         exit(1);
       } else {
-        // it was a parentless process; do nothing.
+        printf("init: reaped zombie process\n");
       }
     }
   }
