@@ -5,7 +5,8 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
-
+#include "fs.h"
+#include "file.h"
 uint64
 sys_exit(void)
 {
@@ -90,4 +91,42 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+uint64
+sys_chmod(void)
+{
+    char path[MAXPATH];
+    int mode;
+    struct inode *ip;
+
+    // Obtener argumentos
+    if (argstr(0, path, MAXPATH) < 0) {
+        return -1; // Error al obtener el primer argumento
+    }
+    if (argint(1, &mode) < 0) {
+        return -1; // Error al obtener el segundo argumento
+    }
+
+    begin_op();
+    if ((ip = namei(path)) == 0) {
+        end_op();
+        return -1; // Archivo no encontrado
+    }
+
+    ilock(ip);
+
+    // Verificar si el archivo es inmutable
+    if (ip->perm == 5) {
+        iunlockput(ip);
+        end_op();
+        return -1; // No se pueden cambiar los permisos de un archivo inmutable
+    }
+
+    ip->perm = mode & 7; // Máscara para asegurar valores válidos (0-7)
+    iupdate(ip);         // Guardar los cambios en el disco
+    iunlockput(ip);
+    end_op();
+
+    return 0; // Éxito
 }

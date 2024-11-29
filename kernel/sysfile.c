@@ -76,6 +76,11 @@ sys_read(void)
   argint(2, &n);
   if(argfd(0, 0, &f) < 0)
     return -1;
+
+    // Verificar permisos de lectura
+  if (f->ip && (f->ip->perm & 1) == 0) {
+    return -1; // No tiene permiso de lectura
+  }
   return fileread(f, p, n);
 }
 
@@ -90,7 +95,11 @@ sys_write(void)
   argint(2, &n);
   if(argfd(0, 0, &f) < 0)
     return -1;
-
+    // Verificar permisos de escritura o si el archivo es inmutable
+  if (f->ip && (f->ip->perm == 5 || (f->ip->perm & 2) == 0)) {
+    return -1; // Bloquear escritura para archivos inmutables o sin permisos de escritura
+  
+  }
   return filewrite(f, p, n);
 }
 
@@ -335,6 +344,22 @@ sys_open(void)
     }
   }
 
+  if (ip->perm == 5 && (omode & (O_WRONLY | O_RDWR))) {
+    end_op();
+    iunlockput(ip);
+    return -1; // No se puede abrir en modo escritura si es inmutable
+}
+    // Verificar permisos de lectura y escritura
+  if ((ip->perm & 1) == 0 && (omode & O_RDONLY)) {
+    end_op();
+    iunlockput(ip);
+    return -1; // No tiene permiso de lectura
+    }
+  if ((ip->perm & 2) == 0 && (omode & O_WRONLY)) {
+    end_op();
+    iunlockput(ip);
+    return -1; // No tiene permiso de escritura
+    }
   if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
     iunlockput(ip);
     end_op();

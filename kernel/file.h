@@ -1,3 +1,6 @@
+#include "spinlock.h"
+#include "sleeplock.h"
+
 struct file {
   enum { FD_NONE, FD_PIPE, FD_INODE, FD_DEVICE } type;
   int ref; // reference count
@@ -27,6 +30,7 @@ struct inode {
   short nlink;
   uint size;
   uint addrs[NDIRECT+1];
+  int perm; // 0 = denegado, 1 = lectura, 2 = escritura, 3 = lectura/escritura
 };
 
 // map major device number to device functions.
